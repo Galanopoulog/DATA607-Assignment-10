@@ -1,0 +1,82 @@
+---
+title: "Assignment 10 - NoSQL migration"
+author: "Georgia Galanopoulos"
+date: "April 30, 2017"
+output:
+  html_document:
+    toc: true
+    highlight: tango
+---
+
+```{r}
+library(DBI)
+library(RMySQL)
+library(mongolite)
+library(knitr)
+```
+
+For this assignment, the goal was to take information from a relational database (MySQL) and migrate it to a NoSQL, in this case MongoDB.
+
+
+### Reading data in from MySQL
+
+The database used was the "data skills" database from Project 3.
+```{r}
+connect = dbConnect(MySQL(), user='root', password='data607pw', host='35.185.104.222', dbname='datascienceskills')
+data = dbGetQuery(connect, "SELECT Location.Description, Location.Country, Skills.SkillDescription, Categories.Description, skillsdata.Amount, skillsdata.Rating
+                       FROM skillsdata LEFT JOIN (Skills LEFT JOIN Categories ON Skills.SkillCategory = Categories.CategoryID, Location)
+                       ON (Skills.SkillID = skillsdata.Skill AND Location.LocationID = skillsdata.Place);")
+
+colnames(data) = c("Location", "Country", "Skill", "SkillType", "Amount", "Rating")
+
+kable(head(data))
+```
+
+
+### Installing and Starting MongoDB
+* Installed MongoDB from https://www.mongodb.com/download-center?jmp=nav#community
+* Had to got to "C:/Program Files" and create a "data" folder, inside of which I had to create a "db" folder.
+* Updated PATH environment variable to include "C:/Program Files/MongoDB/Server/3.4/bin"
+* Used the cmd to run *mongod* first (do not close this cmd prompt. it must keep running). Then opened another cmd to run *mongo* and create/view databases/collections.
+
+
+### Moving Data Into MongoDB
+
+After creating a database called "skills" and a collection called "data", I used the "mongolite" library to connect to the MongoDB collection and put the relational database into it (using the $insert() function). Other potential approaches could have been to convert the data into a json or csv file and import it into MongoDB, however my attempts with "mongoimport" were unsuccessful and riddled with Errors. This approach was simpler for the data I was working with. 
+```{r}
+mongodata = mongo(collection = "data", db = "skills")
+mongodata$insert(data)
+```
+
+
+### Comparing the Dataframes for Equality
+
+When visually comparing the data, there seem to be no differences. However, with larger databases, just eyeballing the rows is not efficient or accurate. Using the identical() function, I compared the MySQL database with the MongoDB one and the result "TRUE" determined that they were equal. 
+
+```{r}
+kable(head(data))
+kable(head(mongodata$find()))
+
+
+identical(mongodata$find(), data)
+```
+One of the points to note was that, originally, when I ran the identical() function to compare the relational database with the newly-created NoSQL database, the result returned was "FALSE". The reason for this was because the "data2$insert(data)" portion of the code did exactly what is was asked in that it kept inserting the "data" dataframe into the MongoDB "skills" database, which led to having the same dataframe repeated three and four times in one database. So, when testing the code, I had to make sure that the MongoDB "skills" database was empty before refilling it. To do this, I entered:
+
+>"> use skills"
+
+and then
+
+>"> db.dropDatabase()"
+
+into the command prompt, which didn't delete the "skills" database, but only emptied its contents.
+
+### Advantages and Disadvantages Between NoSQL and SQL
+
+NoSQL is flexible with its data template. Unlike SQL, where you you cannot enter a number value where a string is expected or where each row is a unique entry, NoSQL is not as rigid. This, however can lead to consistency issues (as I experienced above where the "data" database was essentially the same dataframe entered multiple times).
+
+NoSQL does not have a JOIN clause, which can be a big problem because, instead of the data tables automatically returning the desired information, the user has to manually pull out all relevant documents and link the data together. This is only for one query. With more queries and more data, more tedious troubles arise.
+
+On a less relevant note, MongoDB gave me less trouble upon installation. Sure, there were some steps that I had to go back to and look through to understand why there were glitches (creating the two folders (data and db)), but overall I found it easier and quicker to get started than MySQL.
+
+What it really comes down to when trying to decide whether to use NoSQL or SQL is what data you have and what you plan to do with it.
+
